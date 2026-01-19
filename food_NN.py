@@ -9,44 +9,6 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Neural Predator-Prey + Grass & Meat – Toroidal")
 clock = pygame.time.Clock()
 
-# ─── Controllo velocità simulazione ───────────────────────────────────────────
-time_multiplier = 1.0
-speed_levels = [0.5, 1.0, 2.0, 10.0, 100.0]
-
-# Posizione e stile pulsanti
-BUTTON_WIDTH = 70
-BUTTON_HEIGHT = 34
-BUTTON_MARGIN = 10
-BUTTON_Y = 12
-BUTTONS_X_START = 12
-
-buttons = []
-for i, speed in enumerate(speed_levels):
-    x = BUTTONS_X_START + i * (BUTTON_WIDTH + BUTTON_MARGIN)
-    rect = pygame.Rect(x, BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT)
-    buttons.append((rect, speed))
-
-
-def draw_speed_buttons():
-    mouse_pos = pygame.mouse.get_pos()
-    for rect, speed in buttons:
-        # Colore base
-        color = (60, 140, 220) if speed == time_multiplier else (90, 90, 90)
-        
-        # Hover
-        if rect.collidepoint(mouse_pos):
-            color = (100, 180, 255) if speed == time_multiplier else (130, 130, 130)
-        
-        pygame.draw.rect(screen, color, rect, border_radius=6)
-        pygame.draw.rect(screen, (40, 40, 40), rect, 2, border_radius=6)
-        
-        label = f"×{speed:.0f}" if speed >= 1 else f"×{speed:.1f}"
-        if speed == 1.0:
-            label = "×1"
-        text = font.render(label, True, (255, 255, 255))
-        screen.blit(text, text.get_rect(center=rect.center))
-
-
 # ─── Parametri ────────────────────────────────────────────────────────────────
 N_PREY_START       = 30
 N_PRED_START       = 10
@@ -56,7 +18,7 @@ VISION_RANGE_PREY  = 150
 VISION_RANGE_PRED  = 280
 EAT_DISTANCE       = 14
 
-GRASS_SPAWN_RATE   = 1
+GRASS_SPAWN_RATE   = 1       # base probabilità per frame (~0.48 erba/sec a 60 fps)
 GRASS_PER_SPAWN    = 1
 GRASS_ENERGY       = 0.28
 
@@ -98,12 +60,12 @@ class SimpleNN:
         out = tanh(np.dot(h, self.W2) + self.b2)
         return out
 
-    def mutated_copy(self, mutation_rate):
+    def blend_with(self, other, mutation_rate, alpha=0.5):
         child = SimpleNN(self.W1.shape[0], self.W1.shape[1], self.W2.shape[1])
-        child.W1 = self.W1 + np.random.randn(*self.W1.shape) * mutation_rate
-        child.b1 = self.b1 + np.random.randn(*self.b1.shape) * mutation_rate * 0.35
-        child.W2 = self.W2 + np.random.randn(*self.W2.shape) * mutation_rate
-        child.b2 = self.b2 + np.random.randn(*self.b2.shape) * mutation_rate * 0.35
+        child.W1 = alpha * self.W1 + (1 - alpha) * other.W1 + np.random.randn(*self.W1.shape) * mutation_rate
+        child.b1 = alpha * self.b1 + (1 - alpha) * other.b1 + np.random.randn(*self.b1.shape) * mutation_rate * 0.35
+        child.W2 = alpha * self.W2 + (1 - alpha) * other.W2 + np.random.randn(*self.W2.shape) * mutation_rate
+        child.b2 = alpha * self.b2 + (1 - alpha) * other.b2 + np.random.randn(*self.b2.shape) * mutation_rate * 0.35
         return child
 
 
@@ -228,7 +190,6 @@ def energy_color(energy, is_prey=True):
             r, g, b = 240, 70, 50
         else:
             r, g, b = 160, 30, 30
-
     r = max(0, min(255, r))
     g = max(0, min(255, g))
     b = max(0, min(255, b))
@@ -239,13 +200,9 @@ def draw_agent(screen, agent):
     pos = agent.pos.astype(int)
     color = energy_color(agent.energy, agent.type == "prey")
 
-    if agent.speed < 0.20:
-        radius = 7 if agent.type == "prey" else 9
-        pygame.draw.circle(screen, color, pos, radius)
-        return
-
     angle = np.arctan2(agent.vel[1], agent.vel[0])
     size = 10 if agent.type == "pred" else 6 + 5 * agent.energy
+    
     pts = [
         pos + np.array([np.cos(angle),      np.sin(angle)])      * size,
         pos + np.array([np.cos(angle+2.35), np.sin(angle+2.35)]) * size * 0.65,
@@ -284,31 +241,26 @@ while running:
         if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
             running = False
 
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            mouse_pos = event.pos
-            for rect, speed in buttons:
-                if rect.collidepoint(mouse_pos):
-                    time_multiplier = speed
-                    break
-
-    # dt scalato dalla velocità scelta
-    dt = clock.tick(60) / 1000.0 * time_multiplier
+    dt = clock.tick(60) / 1000.0
     current_time = pygame.time.get_ticks()
 
     fade = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
     fade.fill((4, 12, 6, 12))
     screen.blit(fade, (0, 0))
 
-    # Spawn erba
+    # ─── SPAWN ERBA ───────────────────────────────────────────────────────────
     if random.random() < GRASS_SPAWN_RATE:
         for _ in range(GRASS_PER_SPAWN):
-            foods.append(Food(random.uniform(0, WIDTH), random.uniform(0, HEIGHT), "grass"))
+            foods.append(Food(
+                random.uniform(0, WIDTH),
+                random.uniform(0, HEIGHT),
+                "grass"
+            ))
 
-    # Update predatori
+    # ─── Update predatori ─────────────────────────────────────────────────────
     for pred in pred_list[:]:
         inputs = get_nn_input(pred, prey_list, pred_list, foods)
         accel = pred.nn.forward(inputs) * 1.55
-
         pred.vel += accel
         pred.normalize_vel(MAX_SPEED_PRED)
 
@@ -325,7 +277,7 @@ while running:
         pred_list.remove(p)
         all_agents.remove(p)
 
-    # Update prede
+    # ─── Update prede ─────────────────────────────────────────────────────────
     for pr in prey_list[:]:
         inputs = get_nn_input(pr, prey_list, pred_list, foods)
         accel = pr.nn.forward(inputs) * 1.15
@@ -334,7 +286,6 @@ while running:
 
         pr.energy += 0.0035 * dt * 60
         pr.energy = min(1.0, pr.energy)
-
         pr.energy -= 0.0012 * dt * 60
 
         if pr.speed > 1.2:
@@ -345,7 +296,7 @@ while running:
             prey_list.remove(pr)
             all_agents.remove(pr)
 
-    # Movimento
+    # Movimento (toroidale)
     for a in all_agents:
         a.pos += a.vel * 60 * dt
         a.pos[0] %= WIDTH
@@ -388,12 +339,13 @@ while running:
                     f.eaten = True
                     break
 
-    # Pulizia cibi
+    # Pulizia cibi morti/mangiati
     to_remove = [f for f in foods if f.eaten or (f.kind == "meat" and not f.is_alive())]
     for f in to_remove:
         foods.remove(f)
 
-    # Riproduzione
+    # ─── Riproduzione ─────────────────────────────────────────────────────────
+    # Predatori
     pred_repro_p = 0.08 if len(pred_list) < 6 else 0.04 if len(pred_list) < 12 else PRED_REPRO_PROB
     if len(pred_list) >= PRED_MIN_FOR_REPRO and random.random() < pred_repro_p:
         candidates = [p for p in pred_list if p.energy > PRED_ENERGY_TO_REPRO]
@@ -401,39 +353,52 @@ while running:
             weights = [p.energy ** 1.6 for p in candidates]
             p1 = random.choices(candidates, weights=weights, k=1)[0]
             p2 = random.choices(candidates, weights=weights, k=1)[0]
-            donor = p1 if p1.energy > p2.energy else p2
-            child_nn = donor.nn.mutated_copy(PRED_MUTATION_RATE)
-            child = Agent(donor.pos[0] + random.uniform(-110,110),
-                          donor.pos[1] + random.uniform(-110,110), "pred", child_nn)
+            while p2 == p1:
+                p2 = random.choices(candidates, weights=weights, k=1)[0]
+            alpha = p1.energy / (p1.energy + p2.energy)
+            child_nn = p1.nn.blend_with(p2.nn, PRED_MUTATION_RATE, alpha)
+            child_pos = (p1.pos + p2.pos) / 2 + np.random.uniform(-110, 110, 2)
+            child = Agent(child_pos[0], child_pos[1], "pred", child_nn)
             child.energy = 0.62
             child.vel *= 0.3
             pred_list.append(child)
             all_agents.append(child)
+            p1.energy *= 0.65
+            p2.energy *= 0.65
+            p1.energy = max(0.22, p1.energy)
+            p2.energy = max(0.22, p2.energy)
 
+    # Prede
     prey_repro_p = 0.09 if len(prey_list) < 40 else 0.045 if len(prey_list) < 75 else PREY_REPRO_PROB
     if len(prey_list) >= PREY_MIN_FOR_REPRO and random.random() < prey_repro_p:
         candidates = [p for p in prey_list if p.energy > PREY_ENERGY_TO_REPRO]
-        if candidates:
-            donor = random.choice(candidates)
-            child_nn = donor.nn.mutated_copy(PREY_MUTATION_RATE)
-            child = Agent(donor.pos[0] + random.uniform(-70,70),
-                          donor.pos[1] + random.uniform(-70,70), "prey", child_nn)
+        if len(candidates) >= 2:
+            weights = [p.energy ** 1.6 for p in candidates]
+            p1 = random.choices(candidates, weights=weights, k=1)[0]
+            p2 = random.choices(candidates, weights=weights, k=1)[0]
+            while p2 == p1:
+                p2 = random.choices(candidates, weights=weights, k=1)[0]
+            alpha = p1.energy / (p1.energy + p2.energy)
+            child_nn = p1.nn.blend_with(p2.nn, PREY_MUTATION_RATE, alpha)
+            child_pos = (p1.pos + p2.pos) / 2 + np.random.uniform(-70, 70, 2)
+            child = Agent(child_pos[0], child_pos[1], "prey", child_nn)
             child.energy = 0.78
             child.vel *= 0.38
             prey_list.append(child)
             all_agents.append(child)
+            p1.energy *= 0.65
+            p2.energy *= 0.65
+            p1.energy = max(0.22, p1.energy)
+            p2.energy = max(0.22, p2.energy)
 
-    # Disegno
+    # ─── Disegno ──────────────────────────────────────────────────────────────
     for f in foods:
         draw_food(screen, f)
 
     for agent in all_agents:
         draw_agent(screen, agent)
 
-    # Pulsanti velocità
-    draw_speed_buttons()
-
-    # Testo info
+    # Info testo
     prey_c = len(prey_list)
     pred_c = len(pred_list)
     avg_prey = sum(p.energy for p in prey_list) / prey_c if prey_c else 0
