@@ -14,7 +14,7 @@ N_PRED_START      = 20
 MAX_SPEED_PREY    = 3
 MAX_SPEED_PRED    = 3.7
 VISION_RANGE_PREY = 100
-VISION_RANGE_PRED = 2500
+VISION_RANGE_PRED = 270
 SEPARATION_DIST   = 25
 EAT_DISTANCE      = 11
 
@@ -108,7 +108,7 @@ while running:
 
         if visible:
             closest_diff = min(visible, key=lambda x: x[1])[2]
-            accel = closest_diff / (np.linalg.norm(closest_diff) + 1e-6) * 0.65
+            accel = closest_diff / (np.linalg.norm(closest_diff) + 1e-6) * 1.1
         else:
             accel = np.random.randn(2) * 0.14
 
@@ -209,6 +209,21 @@ while running:
 
     # ─── Draw everything ──────────────────────────────────────────────────────
     for agent in all_agents:
+        # # Range di vista predatori
+        # if agent.type == "pred":
+        #     pos = agent.pos.astype(int)
+        #     vision_surf = pygame.Surface((int(VISION_RANGE_PRED*2), int(VISION_RANGE_PRED*2)), pygame.SRCALPHA)
+        #     pygame.draw.circle(
+        #         vision_surf,
+        #         (180, 40, 40, 1),
+        #         (VISION_RANGE_PRED, VISION_RANGE_PRED),
+        #         VISION_RANGE_PRED
+        #     )
+        #     screen.blit(
+        #         vision_surf,
+        #         (pos[0] - VISION_RANGE_PRED, pos[1] - VISION_RANGE_PRED)
+        #     )
+
         draw_agent(screen, agent)
 
     # HUD
