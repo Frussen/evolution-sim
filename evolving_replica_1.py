@@ -10,32 +10,33 @@ MARGIN = 15  # Spessore del "muro" fisico
 
 # Popolazioni
 START_PLANTS      = 200
-START_PREY        = 100
-START_PREDATORS   = 40
+START_PREY        = 170
+START_PREDATORS   = 30
 
 # Parametri Energia
-MAX_ENERGY        = 200
-CHILD_ENERGY_VAL  = 70
+MAX_ENERGY        = 270
+CHILD_ENERGY_VAL  = 90
 
 # PREDE
-PREY_REPRO_AT     = 150
-PREY_BASAL_COST   = 0.3 # Leggermente aumentato per bilanciare la facilità di trovare cibo
-MAX_SPEED_PREY    = 2.7  
+PREY_REPRO_AT     = 170
+PREY_BASAL_COST   = 0.3
+MAX_SPEED_PREY    = 2.7
+PREY_EAT_GAIN     = 40  
 
 # PREDATORI
-PRED_REPRO_AT     = 180
-PRED_BASAL_COST   = 0.5  
-MAX_SPEED_PRED    = 2.3  
-PRED_EAT_GAIN     = 60    
+PRED_REPRO_AT     = 210
+PRED_BASAL_COST   = 0.7
+MAX_SPEED_PRED    = 2.5  
+PRED_EAT_GAIN     = 70    
 
 # Dinamiche
 MOVE_COST_FACTOR  = 0.025 
-MAX_TURN          = math.pi / 20
+MAX_TURN          = math.pi / 15
 MAX_VISION        = 160
 NEW_PLANTS_PER_FRAME = 2
 PLANT_SPAWN_CHANCE = 0.8
 
-# Colori
+# Colori (invariati)
 COLOR_BG          = (15, 15, 22)
 COLOR_PLANT       = (60, 220, 80)
 COLOR_PREY        = (70, 160, 255)
@@ -72,7 +73,7 @@ class Creature:
         self.y = max(MARGIN, min(HEIGHT - MARGIN, y))
         self.heading = random.uniform(0, math.pi*2)
         self.speed = 1.2
-        self.energy = 85
+        self.energy = 100  # Aumentato per realismo iniziale
         self.health = 100
         self.is_prey = is_prey
         self.brain = brain if brain else NeuralNet()
@@ -80,7 +81,7 @@ class Creature:
 
     def get_inputs(self, plants, creatures):
         # 1. SENSORI VISIVI (Settori)
-        sectors = 5
+        sectors = 7
         sector_dist = [1.0] * sectors
         sector_type = [0] * (sectors * 4)
         fov = math.pi * 1.6 if self.is_prey else math.pi * 1.2
@@ -197,7 +198,7 @@ while running:
         if c.is_prey:
             for p in plants[:]:
                 if math.hypot(c.x-p.x, c.y-p.y) < c.radius + p.radius:
-                    c.energy = min(MAX_ENERGY, c.energy + 40)
+                    c.energy = min(MAX_ENERGY, c.energy + PREY_EAT_GAIN)
                     plants.remove(p)
                     break
         else:
@@ -230,7 +231,7 @@ while running:
     seconds = (pygame.time.get_ticks() - start_ticks) // 1000
     timer = f"{seconds // 60:02}:{seconds % 60:02}"
     status = f"TIME: {timer} | PREY: {n_prey} | PRED: {n_pred} | PLANTS: {len(plants)}"
-    screen.blit(font.render(status, True, (200, 200, 200)), (20, HEIGHT - 25))
+    screen.blit(font.render(status, True, (200, 200, 200)), (27, HEIGHT - 42))
     
     if n_prey == 0 or n_pred == 0:
         screen.blit(font.render("EXTINCTION EVENT", True, (255, 50, 50)), (WIDTH//2 - 60, HEIGHT//2))
